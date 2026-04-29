@@ -4,8 +4,6 @@
 
 No cloud. No API keys. No AI. Just deterministic scanning that runs entirely on your machine.
 
-![dashboard](docs/dashboard.png)
-
 ---
 
 ## ✨ Features
