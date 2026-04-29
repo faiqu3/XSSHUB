@@ -36,7 +36,7 @@ Open **http://127.0.0.1:8787** 🚀
 
 ### 1. Paste URLs and run
 
-![scan](docs/scan.png)
+![scan](/docs/dashboard.png)
 
 Each URL must contain at least one query parameter. Toggle features as needed:
 
