@@ -1,7 +1,0 @@
-flask>=3.0
-requests>=2.31
-beautifulsoup4>=4.12
-
-# Optional — only needed when using the Verify feature (headless RCE confirmation).
-# After installing, run once: playwright install chromium
-playwright>=1.40
