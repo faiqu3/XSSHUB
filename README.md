@@ -1,152 +1,169 @@
-# XSS HUB
+# 🎯 XSS HUB
 
-Reflected-parameter scanner with a server backend (no CORS limits) and a
-streaming dark-mode dashboard.
+**Fast, local, reflected-XSS scanner with browser-confirmed PoC generation.**
 
-```
-┌──────────────┐    POST /api/scan     ┌──────────────┐
-│  Dashboard   │ ───────────────────▶  │ Python       │
-│  (browser)   │                       │ scanner      │
-│              │ ◀──────────────────── │ (requests)   │
-└──────────────┘    NDJSON stream      └──────┬───────┘
-                                              │
-                                              ▼  no CORS
-                                        ┌──────────┐
-                                        │  TARGET  │
-                                        └──────────┘
-```
+No cloud. No API keys. No AI. Just deterministic scanning that runs entirely on your machine.
 
-## Setup (60 seconds)
+![dashboard](docs/dashboard.png)
 
-```bash
-# 1. install deps
-pip install -r requirements.txt
+---
 
-# 2. run the server
-python server.py
+## ✨ Features
 
-# 3. open the dashboard
-#    → http://127.0.0.1:8787
-```
+- 🔍 **Differential DOM detection** — catches `<img>`, `<script>`, `<iframe>` injection that simple blacklists miss
+- 🚩 **Browser-confirmed PoC** — runs payloads in headless Chromium, confirms `console.log(1337)` actually fires
+- 🧠 **Conditional cascading** — only does work that matters (no wasted requests)
+- 🎯 **Editable payloads** — enable/disable per row, bulk operations, custom red flag variants
+- 🌗 Light/dark theme · 🔌 HTTP proxy support · 📦 Single-file Python backend
 
-That's it. Paste URLs into the dashboard, hit **Run scan**.
+---
 
-### Optional: virtualenv
+## ⚡ Quick install
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+git clone https://github.com/YOUR_USERNAME/xss-hub.git
+cd xss-hub
 pip install -r requirements.txt
+playwright install chromium    # optional, needed for PoC
 python server.py
 ```
 
-### CLI flags
+Open **http://127.0.0.1:8787** 🚀
+
+---
+
+## 🖥️ Usage
+
+### 1. Paste URLs and run
+
+![scan](docs/scan.png)
+
+Each URL must contain at least one query parameter. Toggle features as needed:
+
+| Toggle | What it does |
+|---|---|
+| **Deepscan** | Runs `console.log(1337)` red flag payloads when a base breaks |
+| **PoC** | Confirms execution in headless Chromium *(requires Deepscan)* |
+| **Follow redirects** | Standard HTTP behaviour |
+
+### 2. Read the results
+
+![results](docs/scan.png)
+
+| Badge | Meaning |
+|---|---|
+| 🚩 `VULNERABLE · XSS CONFIRMED` | PoC fired in real browser |
+| `BREAKS HTML` | Payload escaped its context |
+| `REFLECTED · SAFE` | Echoes but every payload was escaped |
+| `NO REFLECTION` | Parameter not reflected |
+
+### 3. Edit payloads at `/config`
+
+![config](docs/config.png)
+
+Per-payload enable/disable, bulk operations, custom red flag variants.
+
+---
+
+## 🧪 Try it locally
+
+A vulnerable test server ships with the repo:
 
 ```bash
-python server.py --host 0.0.0.0 --port 9000   # listen on LAN
-python server.py --debug                       # auto-reload during dev
+python test_target.py    # → http://127.0.0.1:9999
 ```
 
-## Using the dashboard
-
-1. **Paste target URLs** in the textarea, one per line. Each must include at
-   least one query parameter. Lines starting with `#` are ignored.
-
-2. *(Optional)* Open **Advanced options** to add:
-   - **Custom headers** — `Cookie: session=…`, `Authorization: Bearer …`,
-     `X-Forwarded-For: …`. One `Key: Value` per line.
-   - **Timeout** — per-request, default 15s.
-   - **Payload concurrency** — 1–9 parallel payload tests per param. Default 4.
-
-3. Hit **▶ Run scan**. Results stream in live. Stop anytime with **■ Stop**.
-
-4. Read the verdicts:
-
-   | Badge | Meaning |
-   |---|---|
-   | `NO REFLECTION` (green) | param doesn't echo back |
-   | `REFLECTED · SAFE` (amber) | echoes, but every payload was escaped |
-   | `BREAKS HTML` (red, pulsing) | a payload escaped its context — investigate |
-   | `BLOCKED` / `ERROR` | network or fetch failure (see per-row reason) |
-
-5. Per-payload row actions:
-   - **▶ render** — load the test URL inside an iframe modal for visual proof
-   - **↗ open** — open in a new tab
-   - **⎘ copy** — copy the test URL
-
-6. **Export flagged** downloads a JSON report of every URL × param × payload
-   that broke HTML.
-
-## What it actually tests
-
-For each URL, for each query parameter, the backend:
-
-1. Sends a random canary value (`fqxxxxxxxx`) and checks if it's reflected
-   in the response body. If not, that param is skipped.
-2. If reflected, fires all 9 payloads in parallel:
-
-   | Payload | Context |
-   |---|---|
-   | `"><faique>` | break out of `attr="…"` |
-   | `'><faique>` | break out of `attr='…'` |
-   | `""><faique>` | break out of stripped doubled quotes |
-   | `<faique>` | raw HTML body injection |
-   | `</faique>` | premature close tag |
-   | `" data-fqprobe="1` | attribute injection (double-quoted) |
-   | `' data-fqprobe='1` | attribute injection (single-quoted) |
-   | `'__FQJS_RANDOM__'` | break a JS single-quoted string |
-   | `"__FQJS_RANDOM__"` | break a JS double-quoted string |
-
-3. Parses the response with **BeautifulSoup** and checks:
-   - Did `<faique>` appear as a real element? → broken.
-   - Did `data-fqprobe` end up as an attribute on something? → broken.
-   - Did the random JS token end up inside a `<script>` block with quotes
-     intact? → broken (manual confirm recommended).
-
-`__FQJS_RANDOM__` is replaced with a fresh random token on every request.
-
-## API
-
-POST `/api/scan` with JSON:
-
-```json
-{
-  "urls": ["https://example.com/x?q=1"],
-  "followRedirects": true,
-  "headers": "Cookie: a=b\nAuthorization: Bearer xyz",
-  "timeout": 15,
-  "payloadWorkers": 4
-}
-```
-
-Response is `application/x-ndjson` — one JSON event per line:
+Then scan from the dashboard:
 
 ```
-{"type": "url_start", "url": "..."}
-{"type": "param_start", "url": "...", "param": "q"}
-{"type": "param_done", "url": "...", "result": { ... }}
-{"type": "url_done", "url": "...", "params": [...], "error": null}
-{"type": "done"}
+http://127.0.0.1:9999/body?q=h
+http://127.0.0.1:9999/attr?name=h
+http://127.0.0.1:9999/safe?q=h
+http://127.0.0.1:9999/js?q=t
 ```
 
-You can call this from `curl` directly:
+Expected: `/body`, `/attr`, `/js` flag as **vulnerable**; `/safe` shows **reflected · safe**.
+
+---
+
+## 🔌 API
+
+All features are also available via JSON API. Example:
 
 ```bash
-curl -N -X POST http://127.0.0.1:8787/api/scan \
+curl -sN -X POST http://127.0.0.1:8787/api/scan \
   -H 'Content-Type: application/json' \
-  -d '{"urls":["http://testphp.vulnweb.com/search.php?test=query"]}'
+  -d '{
+    "urls": ["https://target.example/?q=test"],
+    "deepscan": true,
+    "poc": true
+  }' | jq -c 'select(.type=="url_done")'
 ```
 
-## Notes & caveats
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/health` | GET | Server status + Playwright availability |
+| `/api/config` | GET / POST | Get or save the payload library |
+| `/api/config/reset` | POST | Restore default 9 payloads |
+| `/api/scan` | POST | Run a scan (returns NDJSON stream) |
 
-- **SSL verification is OFF.** Security testing routinely hits self-signed
-  certs. Don't point this at production traffic you don't own.
-- **Auth flows.** For session-cookie sites, copy your `Cookie:` header from
-  DevTools into the Custom headers field. For Bearer tokens, same idea.
-- **Rate limiting.** URLs scan sequentially; payloads within a param run in
-  parallel (configurable). Adjust concurrency down for fragile targets.
-- **JS-context detection is heuristic** — treat those breaks as "look at this
-  manually" rather than confirmed bugs.
-- **Use only on systems you're authorized to test.** Bug bounty scope, your
-  own apps, or deliberately vulnerable labs (DVWA, Juice Shop, PortSwigger
-  Web Security Academy).
+---
+
+## 🧭 Detection pipeline
+
+```
+probe ──▶ bases ──▶ [if any broke] red flag ──▶ [if confirmed] PoC
+```
+
+Seven-stage detection, first-match-wins:
+
+1. `console.log(1337)` reflection
+2. Custom-tag injection (`<faique>`)
+3. **Differential** standard-tag injection (`<img>`, `<script>`)
+4. Custom-attribute injection (`data-fqprobe`)
+5. **Differential** standard-attribute injection (`onclick`, `autofocus`)
+6. JS string-token break inside `<script>`
+7. Static fallback for quoted reflection
+
+---
+
+## 📁 Project structure
+
+```
+xss-hub/
+├── server.py          # Backend (Flask + detection + headless PoC)
+├── index.html         # Dashboard UI
+├── config.html        # Payload editor
+├── test_target.py     # Local vulnerable server for testing
+├── payloads.json      # Auto-created on first run
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## ⚠️ Authorized use only
+
+Test only systems you **own** or have **explicit permission** to test. You are responsible for how you use this software.
+
+---
+
+## 📸 Adding screenshots before pushing
+
+This README references four images in `docs/`:
+
+```
+docs/
+├── dashboard.png    # main dashboard with URLs and toggles
+├── scan.png         # scan in progress with phase indicators
+├── results.png      # results panel with VULNERABLE badge
+└── config.png       # payload editor at /config
+```
+
+Take these from your running tool, save them in `docs/` at the repo root, then `git add docs/`.
+
+---
+
+## 📜 License
+
+MIT — see [LICENSE](LICENSE).
